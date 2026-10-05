@@ -237,28 +237,72 @@ class RaycastBoingEffect(DemoEffect):
         pygame.transform.scale(self.surface, screen.get_size(), screen)
 
 # ==========================================
+# 7. Post-processing (CRT scanlines filter)
+# ==========================================
+# generates a static, semi-transparent scanline and vignette overlay once during initialization
+class CRTPostProcessor:
+    def __init__(self, width: int, height: int):
+        self.width = width
+        self.height = height
+        
+        # Create an overlay surface with per-pixel alpha
+        self.overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # 1. Generate Scanlines (varying opacity for a pulsing CRT look)
+        for y in range(0, height, 3):
+            # Dark main scanline
+            pygame.draw.line(self.overlay, (0, 0, 0, 180), (0, y), (width, y))
+            # Softer bleed line
+            pygame.draw.line(self.overlay, (0, 0, 0, 80), (0, y + 1), (width, y + 1))
+            
+        # 2. Generate a Vignette (darken the corners)
+        center_x, center_y = width // 2, height // 2
+        max_dist = (center_x**2 + center_y**2)**0.5
+        
+        for y in range(height):
+            for x in range(width):
+                dist = ((x - center_x)**2 + (y - center_y)**2)**0.5
+                intensity = dist / max_dist
+                if intensity > 0.6:
+                    # Increase alpha sharply near the edges
+                    alpha = min(255, int((intensity - 0.6) * 500))
+                    # Pygame doesn't natively draw individual alpha pixels easily,
+                    # so we modify the surface array or use a slow set_at for initialization
+                    current = self.overlay.get_at((x, y))
+                    self.overlay.set_at((x, y), (0, 0, 0, min(255, current.a + alpha)))
+
+    def apply(self, frame_buffer: pygame.Surface) -> None:
+        """Applies the CRT overlay directly onto the target buffer."""
+        frame_buffer.blit(self.overlay, (0, 0))
+
+# ==========================================
 # 4. The State Machine / Engine
 # ==========================================
 class DemoEngine:
     def __init__(self, width: int, height: int):
         pygame.init()
-        pygame.display.set_caption("Python Polymorphic Demo Engine")
+        pygame.display.set_caption("Python Polymorphic Demo Engine - CRT Edition")
         self.screen = pygame.display.set_mode((width, height))
+        
+        # Master frame buffer for all rendering
+        self.frame_buffer = pygame.Surface((width, height))
         
         # Offscreen buffers for transition blending
         self.surface_a = pygame.Surface((width, height))
         self.surface_b = pygame.Surface((width, height))
+        
+        # Initialize the post-processing pipeline
+        self.post_processor = CRTPostProcessor(width, height)
         
         self.clock = pygame.time.Clock()
         self.playlist = []
         self.current_idx = 0
         self.running = False
 
-        # Transition state
         self.is_transitioning = False
         self.transition_progress = 0.0
-        self.transition_duration = 1.5  # Seconds to crossfade
-        self.effect_duration = 6.0      # Seconds per effect
+        self.transition_duration = 1.5  
+        self.effect_duration = 5.0      
 
     def add_effect(self, effect: DemoEffect):
         self.playlist.append(effect)
@@ -269,7 +313,9 @@ class DemoEngine:
 
         self.running = True
         active_effect = self.playlist[self.current_idx]
-        active_effect.start(self.screen)
+        
+        # Pass the internal buffer, not the physical screen
+        active_effect.start(self.frame_buffer)
         
         timer = 0.0
 
@@ -283,62 +329,64 @@ class DemoEngine:
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
 
+            # Clear the master buffer at the start of the frame
+            self.frame_buffer.fill((0, 0, 0))
+
             if not self.is_transitioning:
                 timer += dt
-                # Trigger transition when timer expires
                 if timer > self.effect_duration:
                     self.is_transitioning = True
                     self.transition_progress = 0.0
                     next_idx = (self.current_idx + 1) % len(self.playlist)
-                    
-                    # Pre-start the incoming effect so it's ready to render
-                    self.playlist[next_idx].start(self.screen)
+                    self.playlist[next_idx].start(self.frame_buffer)
                 
-                # Normal execution
                 active_effect.update(dt)
-                active_effect.render(self.screen)
+                active_effect.render(self.frame_buffer)
 
             else:
-                # Advancing the transition
                 self.transition_progress += dt / self.transition_duration
                 next_idx = (self.current_idx + 1) % len(self.playlist)
                 next_effect = self.playlist[next_idx]
 
                 if self.transition_progress >= 1.0:
-                    # Transition complete: teardown old, lock in new
                     self.is_transitioning = False
                     active_effect.teardown()
                     self.current_idx = next_idx
                     active_effect = next_effect
                     timer = 0.0
                     
-                    # Render normally
                     active_effect.update(dt)
-                    active_effect.render(self.screen)
+                    active_effect.render(self.frame_buffer)
                 else:
-                    # 1. Update both physics/logic states simultaneously
                     active_effect.update(dt)
                     next_effect.update(dt)
                     
-                    # 2. Render to separate offscreen buffers
+                    self.surface_a.fill((0,0,0))
+                    self.surface_b.fill((0,0,0))
+                    
                     active_effect.render(self.surface_a)
                     next_effect.render(self.surface_b)
                     
-                    # 3. Calculate crossfade alpha (0 to 255)
                     alpha = int(255 * self.transition_progress)
                     self.surface_b.set_alpha(alpha)
                     
-                    # 4. Composite the buffers onto the main screen
-                    self.screen.blit(self.surface_a, (0, 0))
-                    self.screen.blit(self.surface_b, (0, 0))
+                    # Composite transitions onto the master buffer
+                    self.frame_buffer.blit(self.surface_a, (0, 0))
+                    self.frame_buffer.blit(self.surface_b, (0, 0))
 
+            # --- POST-PROCESSING PASS ---
+            self.post_processor.apply(self.frame_buffer)
+
+            # --- HARDWARE FLIP ---
+            self.screen.blit(self.frame_buffer, (0, 0))
             pygame.display.flip()
+            
             print(f"FPS: {self.clock.get_fps():.2f}", end="\r")
 
         pygame.quit()
 
 if __name__ == "__main__":
-    engine = DemoEngine(640, 480)
+    engine = DemoEngine(800, 600)
     engine.add_effect(PixelFireEffect())
     engine.add_effect(RaycastBoingEffect())
     engine.run()
