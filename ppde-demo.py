@@ -286,6 +286,7 @@ class DemoEngine:
         pygame.init()
         pygame.display.set_caption("Python Polymorphic Demo Engine - CRT Edition")
         self.screen = pygame.display.set_mode((width, height))
+        self.font = pygame.font.SysFont("Courier", 12, bold=True)
         
         # Master frame buffer for all rendering
         self.frame_buffer = pygame.Surface((width, height))
@@ -310,7 +311,13 @@ class DemoEngine:
     def add_effect(self, effect: DemoEffect):
         self.playlist.append(effect)
 
+        # Timing controls
+        self.timer = 0.0
+        self.effect_duration = 8.0     # Total time per effect
+        self.transition_duration = 2.0 # How long the crossfade lasts
+
     def run(self):
+        run_time = 0.0
         if not self.playlist:
             return
 
@@ -324,6 +331,8 @@ class DemoEngine:
 
         while self.running:
             dt = self.clock.tick(60) / 1000.0
+            run_time += dt
+            self.timer += dt
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -382,9 +391,9 @@ class DemoEngine:
 
             # --- HARDWARE FLIP ---
             self.screen.blit(self.frame_buffer, (0, 0))
+            fps_text = self.font.render(f"FPS: {int(self.clock.get_fps())}", True, (0, 255, 0))
+            self.screen.blit(fps_text, (10, 10))
             pygame.display.flip()
-            
-            print(f"FPS: {self.clock.get_fps():.2f}", end="\r")
 
         pygame.quit()
 
