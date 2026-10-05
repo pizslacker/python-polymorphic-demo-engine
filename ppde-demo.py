@@ -82,6 +82,9 @@ class PixelFireEffect(DemoEffect):
     def teardown(self) -> None:
         self.fire_buffer.fill(0)
 
+# ==========================================
+# 3. Concrete Effect B: Raycasted Boing Ball
+# ==========================================
 class RaycastBoingEffect(DemoEffect):
     def __init__(self, render_width=160, render_height=120):
         self.width = render_width
@@ -131,7 +134,7 @@ class RaycastBoingEffect(DemoEffect):
         frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
         
         # ==========================================
-        # 1. BACKGROUND & SHADOW CASTING
+        # 3.1. BACKGROUND & SHADOW CASTING
         # ==========================================
         # Intersect rays with the back wall at Z = 2.0
         t_wall = (2.0 - self.Ro[2]) / self.Rd[..., 2]
@@ -160,7 +163,7 @@ class RaycastBoingEffect(DemoEffect):
         frame[shadow_mask] = frame[shadow_mask] * 0.5
         
         # ==========================================
-        # 2. SPHERE RAYCASTING (The Boing Ball)
+        # 3.2. SPHERE RAYCASTING (The Boing Ball)
         # ==========================================
         O = self.Ro - sphere_center
         b = 2.0 * np.sum(self.Rd * O, axis=-1)
@@ -178,7 +181,7 @@ class RaycastBoingEffect(DemoEffect):
             N = (P - sphere_center) / self.radius
             
             # --------------------------------------
-            # 3. 3D ROTATION MATRIX
+            # 3.3. 3D ROTATION MATRIX
             # --------------------------------------
             # Spin around Y axis over time
             spin = self.time * 2.0
@@ -204,7 +207,7 @@ class RaycastBoingEffect(DemoEffect):
             N_rot = N @ R.T
             
             # --------------------------------------
-            # 4. SPHERICAL UV MAPPING
+            # 3.4. SPHERICAL UV MAPPING
             # --------------------------------------
             u = np.arctan2(N_rot[:, 0], N_rot[:, 2]) / (2 * np.pi) + 0.5
             v = np.arcsin(np.clip(N_rot[:, 1], -1.0, 1.0)) / np.pi + 0.5
@@ -217,7 +220,7 @@ class RaycastBoingEffect(DemoEffect):
             base_color = np.where(is_red[:, np.newaxis], [220, 20, 20], [240, 240, 240])
             
             # --------------------------------------
-            # 5. LIGHTING & COMPOSITING
+            # 3.5. LIGHTING & COMPOSITING
             # --------------------------------------
             # Directional light shining from top-left
             light_dir = np.array([0.577, -0.577, -0.577]) 
@@ -230,14 +233,14 @@ class RaycastBoingEffect(DemoEffect):
             frame[hit_mask] = lit_color.astype(np.uint8)
 
         # ==========================================
-        # 6. BLIT TO SCREEN
+        # 3.6. BLIT TO SCREEN
         # ==========================================
         # Fast blit the NumPy array directly into the Pygame surface memory
         pygame.surfarray.blit_array(self.surface, frame)
         pygame.transform.scale(self.surface, screen.get_size(), screen)
 
 # ==========================================
-# 7. Post-processing (CRT scanlines filter)
+# 4. Post-processing (CRT scanlines filter)
 # ==========================================
 # generates a static, semi-transparent scanline and vignette overlay once during initialization
 class CRTPostProcessor:
@@ -276,7 +279,7 @@ class CRTPostProcessor:
         frame_buffer.blit(self.overlay, (0, 0))
 
 # ==========================================
-# 4. The State Machine / Engine
+# 5. The State Machine / Engine
 # ==========================================
 class DemoEngine:
     def __init__(self, width: int, height: int):
