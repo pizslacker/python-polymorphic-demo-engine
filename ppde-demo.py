@@ -329,8 +329,6 @@ class DemoEngine:
 
         # Timing controls
         self.timer = 0.0
-        self.effect_duration = 8.0     # Total time per effect
-        self.transition_duration = 2.0 # How long the crossfade lasts
 
     def run(self):
         run_time = 0.0
